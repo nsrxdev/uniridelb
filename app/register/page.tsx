@@ -12,7 +12,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
-import { ArrowLeft, Upload } from "lucide-react"
+import { ArrowLeft, Upload, Eye, EyeOff } from "lucide-react"
 import Link from "next/link"
 import { useAuth } from "@/contexts/auth-context"
 import { supabase } from "@/lib/supabase"
@@ -36,6 +36,7 @@ export default function RegisterPage() {
   const [role, setRole] = useState<string>(defaultRole)
   const { toast } = useToast()
   const { signUp, isLoading } = useAuth()
+  const [showPassword, setShowPassword] = useState(false)
 
   // Form state
   const [firstName, setFirstName] = useState("")
@@ -58,6 +59,7 @@ export default function RegisterPage() {
   const [homeAddress, setHomeAddress] = useState("")
   const [lat, setLat] = useState<number | null>(null)
   const [lng, setLng] = useState<number | null>(null)
+  const [availableSeats, setAvailableSeats] = useState("3") // Default to 3 seats
 
   // Passenger specific state
   const [genderPreference, setGenderPreference] = useState("same")
@@ -87,8 +89,14 @@ export default function RegisterPage() {
       if (universitiesError) {
         console.error("Error details:", universitiesError)
         console.error("Error fetching universities:", universitiesError)
+
+        // If no universities exist, create and populate the table
+        if (universitiesError.code === "PGRST116") {
+          // Table doesn't exist, create sample universities
+          await createSampleUniversities()
+        }
       } else {
-        setUniversities(universitiesData)
+        setUniversities(universitiesData || [])
       }
 
       // Fetch car models
@@ -99,8 +107,14 @@ export default function RegisterPage() {
 
       if (carModelsError) {
         console.error("Error fetching car models:", carModelsError)
+
+        // If no car models exist, create and populate the table
+        if (carModelsError.code === "PGRST116") {
+          // Table doesn't exist, create sample car models
+          await createSampleCarModels()
+        }
       } else {
-        setCarModels(carModelsData)
+        setCarModels(carModelsData || [])
 
         // Extract unique brands
         const brands = [...new Set(carModelsData.map((car) => car.brand))].sort()
@@ -110,6 +124,95 @@ export default function RegisterPage() {
 
     fetchData()
   }, [])
+
+  // Create sample universities if the table doesn't exist
+  const createSampleUniversities = async () => {
+    const sampleUniversities = [
+      { name: "American University of Beirut (AUB)", city: "Beirut", lat: 33.9, lng: 35.48 },
+      { name: "Lebanese American University (LAU)", city: "Beirut", lat: 33.89, lng: 35.47 },
+      { name: "Notre Dame University (NDU)", city: "Zouk Mosbeh", lat: 33.98, lng: 35.62 },
+      { name: "Université Saint-Joseph (USJ)", city: "Beirut", lat: 33.88, lng: 35.5 },
+      { name: "Lebanese University (LU)", city: "Beirut", lat: 33.87, lng: 35.51 },
+      { name: "University of Balamand", city: "Koura", lat: 34.37, lng: 35.76 },
+      { name: "Beirut Arab University (BAU)", city: "Beirut", lat: 33.88, lng: 35.49 },
+      { name: "Holy Spirit University of Kaslik (USEK)", city: "Jounieh", lat: 33.98, lng: 35.65 },
+    ]
+
+    try {
+      // Create the universities table
+      const { error: createError } = await supabase.rpc("create_universities_table")
+
+      if (createError) {
+        console.error("Error creating universities table:", createError)
+        return
+      }
+
+      // Insert sample data
+      const { data, error } = await supabase.from("universities").insert(sampleUniversities).select()
+
+      if (error) {
+        console.error("Error inserting universities:", error)
+      } else {
+        console.log("Successfully added universities:", data)
+        setUniversities(data)
+      }
+    } catch (error) {
+      console.error("Error in createSampleUniversities:", error)
+    }
+  }
+
+  // Create sample car models if the table doesn't exist
+  const createSampleCarModels = async () => {
+    const sampleCarModels = [
+      { brand: "Toyota", model: "Corolla" },
+      { brand: "Toyota", model: "Camry" },
+      { brand: "Toyota", model: "RAV4" },
+      { brand: "Honda", model: "Civic" },
+      { brand: "Honda", model: "Accord" },
+      { brand: "Honda", model: "CR-V" },
+      { brand: "Nissan", model: "Altima" },
+      { brand: "Nissan", model: "Sentra" },
+      { brand: "Nissan", model: "Rogue" },
+      { brand: "Hyundai", model: "Elantra" },
+      { brand: "Hyundai", model: "Sonata" },
+      { brand: "Hyundai", model: "Tucson" },
+      { brand: "Kia", model: "Optima" },
+      { brand: "Kia", model: "Forte" },
+      { brand: "Kia", model: "Sportage" },
+      { brand: "BMW", model: "3 Series" },
+      { brand: "BMW", model: "5 Series" },
+      { brand: "BMW", model: "X3" },
+      { brand: "Mercedes-Benz", model: "C-Class" },
+      { brand: "Mercedes-Benz", model: "E-Class" },
+      { brand: "Mercedes-Benz", model: "GLC" },
+    ]
+
+    try {
+      // Create the car_models table
+      const { error: createError } = await supabase.rpc("create_car_models_table")
+
+      if (createError) {
+        console.error("Error creating car_models table:", createError)
+        return
+      }
+
+      // Insert sample data
+      const { data, error } = await supabase.from("car_models").insert(sampleCarModels).select()
+
+      if (error) {
+        console.error("Error inserting car models:", error)
+      } else {
+        console.log("Successfully added car models:", data)
+        setCarModels(data)
+
+        // Extract unique brands
+        const brands = [...new Set(data.map((car) => car.brand))].sort()
+        setUniqueBrands(brands)
+      }
+    } catch (error) {
+      console.error("Error in createSampleCarModels:", error)
+    }
+  }
 
   // Filter car models when brand changes
   useEffect(() => {
@@ -262,6 +365,7 @@ export default function RegisterPage() {
             lat,
             lng,
             is_live: false,
+            available_seats: Number.parseInt(availableSeats),
           })
 
           if (driverError) throw driverError
@@ -292,6 +396,10 @@ export default function RegisterPage() {
         variant: "destructive",
       })
     }
+  }
+
+  const togglePasswordVisibility = () => {
+    setShowPassword(!showPassword)
   }
 
   return (
@@ -354,13 +462,22 @@ export default function RegisterPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={togglePasswordVisibility}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -395,11 +512,17 @@ export default function RegisterPage() {
                     <SelectValue placeholder="Select your university" />
                   </SelectTrigger>
                   <SelectContent>
-                    {universities.map((university) => (
-                      <SelectItem key={university.id} value={university.id}>
-                        {university.name}
+                    {universities.length > 0 ? (
+                      universities.map((university) => (
+                        <SelectItem key={university.id} value={university.id}>
+                          {university.name}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value="none" disabled>
+                        No universities found
                       </SelectItem>
-                    ))}
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -522,6 +645,23 @@ export default function RegisterPage() {
                   placeholder="e.g. Black"
                   required
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="availableSeats">Available Seats</Label>
+                <Select value={availableSeats} onValueChange={setAvailableSeats}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select number of seats" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1 Seat</SelectItem>
+                    <SelectItem value="2">2 Seats</SelectItem>
+                    <SelectItem value="3">3 Seats</SelectItem>
+                    <SelectItem value="4">4 Seats</SelectItem>
+                    <SelectItem value="5">5 Seats</SelectItem>
+                    <SelectItem value="6">6 Seats</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">

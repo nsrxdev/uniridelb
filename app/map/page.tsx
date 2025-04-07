@@ -8,13 +8,14 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Car, MapPin, DollarSign, ArrowLeft } from "lucide-react"
+import { Car, MapPin, DollarSign, ArrowLeft, Phone } from "lucide-react"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
 import dynamic from "next/dynamic"
 import { useRouter } from "next/navigation"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
 // Import leaflet CSS only on client side
 import "leaflet/dist/leaflet.css"
@@ -35,6 +36,8 @@ interface Driver {
   plate_number: string
   lat: number
   lng: number
+  available_seats: number
+  whatsapp: string
 }
 
 interface RideRequest {
@@ -57,6 +60,8 @@ export default function MapPage() {
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null)
   const [mapCenter, setMapCenter] = useState<[number, number]>([33.8938, 35.5018]) // Beirut
   const [estimatedCost, setEstimatedCost] = useState<number | null>(null)
+  const [showContactDialog, setShowContactDialog] = useState(false)
+  const [contactInfo, setContactInfo] = useState<any>(null)
   const { toast } = useToast()
   const router = useRouter()
 
@@ -107,6 +112,7 @@ export default function MapPage() {
         .from("active_drivers")
         .select("*")
         .eq("is_live", true)
+        .gt("available_seats", 0) // Only show drivers with available seats
 
       if (driversError) {
         console.error("Error fetching drivers:", driversError)
@@ -139,6 +145,7 @@ export default function MapPage() {
               first_name,
               last_name,
               gender,
+              whatsapp,
               universities!inner(name),
               drivers!inner(
                 car_model_id(brand, model),
@@ -146,7 +153,8 @@ export default function MapPage() {
                 car_color,
                 plate_number,
                 lat,
-                lng
+                lng,
+                available_seats
               )
             )
           `)
@@ -168,8 +176,8 @@ export default function MapPage() {
               first_name,
               last_name,
               gender,
-              universities!inner(name),
-              whatsapp
+              whatsapp,
+              universities!inner(name)
             )
           `)
           .eq("driver_id", user.id)
@@ -293,6 +301,16 @@ export default function MapPage() {
 
   const handleRequestAction = async (requestId: string, action: "accept" | "decline") => {
     try {
+      // Get the request details to update available seats
+      const { data: requestData, error: requestError } = await supabase
+        .from("ride_requests")
+        .select("*")
+        .eq("id", requestId)
+        .single()
+
+      if (requestError) throw requestError
+
+      // Update the request status
       const { error } = await supabase
         .from("ride_requests")
         .update({ status: action === "accept" ? "accepted" : "declined" })
@@ -300,17 +318,66 @@ export default function MapPage() {
 
       if (error) throw error
 
+      // If accepting, decrease available seats
+      if (action === "accept" && userData.drivers && userData.drivers[0]) {
+        const newSeatsCount = userData.drivers[0].available_seats - 1
+
+        const { error: updateSeatsError } = await supabase
+          .from("drivers")
+          .update({
+            available_seats: newSeatsCount,
+            // If no more seats, set is_live to false
+            is_live: newSeatsCount > 0,
+          })
+          .eq("user_id", user.id)
+
+        if (updateSeatsError) throw updateSeatsError
+      }
+
       toast({
         title: action === "accept" ? "Request accepted" : "Request declined",
         description:
           action === "accept" ? "The passenger will be notified" : "The passenger will be notified that you declined",
       })
+
+      // If accepted, show contact info
+      if (action === "accept") {
+        const { data: passengerData, error: passengerError } = await supabase
+          .from("users")
+          .select("first_name, last_name, whatsapp")
+          .eq("id", requestData.passenger_id)
+          .single()
+
+        if (!passengerError && passengerData) {
+          setContactInfo({
+            type: "passenger",
+            name: `${passengerData.first_name} ${passengerData.last_name}`,
+            whatsapp: passengerData.whatsapp,
+          })
+          setShowContactDialog(true)
+        }
+      }
     } catch (error: any) {
       toast({
         title: "Error updating request",
         description: error.message,
         variant: "destructive",
       })
+    }
+  }
+
+  const showDriverContact = (driverId: string) => {
+    const driver = drivers.find((d) => d.id === driverId)
+    if (driver) {
+      setContactInfo({
+        type: "driver",
+        name: `${driver.first_name} ${driver.last_name}`,
+        whatsapp: driver.whatsapp,
+        car: `${driver.car_brand} ${driver.car_model}`,
+        color: driver.car_color,
+        plate: driver.plate_number,
+      })
+      setShowContactDialog(true)
     }
   }
 
@@ -394,6 +461,11 @@ export default function MapPage() {
                         </div>
                         <div className="flex justify-between mt-2 text-sm">
                           <span>{driver.university}</span>
+                          <Badge variant="outline" className="bg-emerald-50 text-emerald-700">
+                            {driver.available_seats} {driver.available_seats === 1 ? "seat" : "seats"}
+                          </Badge>
+                        </div>
+                        <div className="mt-1 text-sm">
                           <span>
                             {userLocation
                               ? `${(
@@ -504,9 +576,13 @@ export default function MapPage() {
                         )}
 
                         {userData.role === "passenger" && request.status === "accepted" && (
-                          <div className="p-3 text-sm rounded-md bg-emerald-50 text-emerald-700">
-                            <p className="font-medium">Contact Driver</p>
-                            <p className="mt-1">WhatsApp: {request.driver.whatsapp}</p>
+                          <div className="flex gap-2">
+                            <Button
+                              className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                              onClick={() => showDriverContact(request.driver.id)}
+                            >
+                              <Phone className="w-4 h-4 mr-1" /> Contact Driver
+                            </Button>
                           </div>
                         )}
                       </CardContent>
@@ -585,6 +661,74 @@ export default function MapPage() {
           )}
         </div>
       </div>
+
+      {/* Contact Information Dialog */}
+      <Dialog open={showContactDialog} onOpenChange={setShowContactDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{contactInfo?.type === "driver" ? "Driver Information" : "Passenger Information"}</DialogTitle>
+            <DialogDescription>Contact details for your ride</DialogDescription>
+          </DialogHeader>
+
+          {contactInfo && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <Avatar className="h-12 w-12">
+                  <AvatarFallback className="bg-emerald-100 text-emerald-700">
+                    {contactInfo.name
+                      .split(" ")
+                      .map((n: string) => n[0])
+                      .join("")}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <h3 className="font-medium text-lg">{contactInfo.name}</h3>
+                </div>
+              </div>
+
+              <div className="space-y-2 p-4 bg-gray-50 rounded-md">
+                <div className="flex items-center gap-2">
+                  <Phone className="h-4 w-4 text-emerald-600" />
+                  <p>
+                    WhatsApp:{" "}
+                    <a
+                      href={`https://wa.me/${contactInfo.whatsapp.replace(/\+/g, "")}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-emerald-600 hover:underline"
+                    >
+                      {contactInfo.whatsapp}
+                    </a>
+                  </p>
+                </div>
+
+                {contactInfo.type === "driver" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <Car className="h-4 w-4 text-emerald-600" />
+                      <p>
+                        Car: {contactInfo.car}, {contactInfo.color}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="bg-emerald-50 text-emerald-700">
+                        Plate: {contactInfo.plate}
+                      </Badge>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <Button
+                className="w-full bg-emerald-600 hover:bg-emerald-700"
+                onClick={() => window.open(`https://wa.me/${contactInfo.whatsapp.replace(/\+/g, "")}`, "_blank")}
+              >
+                <Phone className="h-4 w-4 mr-2" /> Open WhatsApp
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
