@@ -14,7 +14,8 @@ import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
 import dynamic from "next/dynamic"
-import L from "leaflet" // Import Leaflet
+// Only import Leaflet on the client side
+const L = typeof window !== "undefined" ? require("leaflet") : null
 
 // Dynamically import the map components to avoid SSR issues
 const MapContainer = dynamic(() => import("react-leaflet").then((mod) => mod.MapContainer), { ssr: false })

@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const userConfig = {
-    transpilePackages: ['react-leaflet', 'leaflet'],
+    // Remove transpilePackages to avoid conflict
     images: {
       domains: [
         'cdnjs.cloudflare.com',
@@ -13,8 +13,11 @@ const userConfig = {
       ],
     },
     experimental: {
-      serverComponentsExternalPackages: ['leaflet'],
+      // Keep only this configuration for leaflet
+      serverComponentsExternalPackages: ['leaflet', 'react-leaflet'],
     },
   }
   
   export default userConfig
+  
+  
