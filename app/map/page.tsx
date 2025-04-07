@@ -14,33 +14,13 @@ import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
 import dynamic from "next/dynamic"
-// Only import Leaflet on the client side
-const L = typeof window !== "undefined" ? require("leaflet") : null
-
-// Dynamically import the map components to avoid SSR issues
-const MapContainer = dynamic(() => import("react-leaflet").then((mod) => mod.MapContainer), { ssr: false })
-const TileLayer = dynamic(() => import("react-leaflet").then((mod) => mod.TileLayer), { ssr: false })
-const Marker = dynamic(() => import("react-leaflet").then((mod) => mod.Marker), { ssr: false })
-const Popup = dynamic(() => import("react-leaflet").then((mod) => mod.Popup), { ssr: false })
-
-// Import leaflet CSS
-import "leaflet/dist/leaflet.css"
 import { useRouter } from "next/navigation"
 
-// Fix the marker icon issue
-const fixLeafletIcon = () => {
-  // Only run on client
-  if (typeof window !== "undefined") {
-    // @ts-ignore
-    delete L.Icon.Default.prototype._getIconUrl
-    // @ts-ignore
-    L.Icon.Default.mergeOptions({
-      iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
-      iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
-      shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
-    })
-  }
-}
+// Import leaflet CSS only on client side
+import "leaflet/dist/leaflet.css"
+
+// Dynamically import Leaflet with no SSR
+const MapWithNoSSR = dynamic(() => import("@/components/map-component"), { ssr: false })
 
 interface Driver {
   id: string
@@ -79,11 +59,6 @@ export default function MapPage() {
   const [estimatedCost, setEstimatedCost] = useState<number | null>(null)
   const { toast } = useToast()
   const router = useRouter()
-
-  // Fix the Leaflet icon issue
-  useEffect(() => {
-    fixLeafletIcon()
-  }, [])
 
   // Get user's current location
   useEffect(() => {
@@ -366,44 +341,12 @@ export default function MapPage() {
       <div className="flex flex-col md:flex-row h-full">
         {/* Map area */}
         <div className="relative flex-grow h-[50vh] md:h-auto">
-          {typeof window !== "undefined" && (
-            <MapContainer center={mapCenter} zoom={13} style={{ height: "100%", width: "100%" }}>
-              <TileLayer
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              />
-
-              {/* User location marker */}
-              {userLocation && (
-                <Marker position={userLocation}>
-                  <Popup>Your location</Popup>
-                </Marker>
-              )}
-
-              {/* Driver markers */}
-              {userData.role === "passenger" &&
-                drivers.map((driver) => (
-                  <Marker
-                    key={driver.id}
-                    position={[driver.lat, driver.lng]}
-                    eventHandlers={{
-                      click: () => handleDriverSelect(driver.id),
-                    }}
-                  >
-                    <Popup>
-                      <div className="text-sm">
-                        <p className="font-medium">
-                          {driver.first_name} {driver.last_name.charAt(0)}.
-                        </p>
-                        <p>
-                          {driver.car_brand} {driver.car_model}, {driver.car_color}
-                        </p>
-                      </div>
-                    </Popup>
-                  </Marker>
-                ))}
-            </MapContainer>
-          )}
+          <MapWithNoSSR
+            center={mapCenter}
+            userLocation={userLocation}
+            drivers={userData.role === "passenger" ? drivers : []}
+            onDriverSelect={handleDriverSelect}
+          />
         </div>
 
         {/* Sidebar */}

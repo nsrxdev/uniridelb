@@ -1,6 +1,10 @@
 /** @type {import('next').NextConfig} */
 const userConfig = {
-    // Remove transpilePackages to avoid conflict
+    // Fix: Use serverExternalPackages instead of serverComponentsExternalPackages
+    experimental: {
+      // This is the correct option name for Next.js 15
+      serverExternalPackages: ['leaflet', 'react-leaflet'],
+    },
     images: {
       domains: [
         'cdnjs.cloudflare.com',
@@ -11,10 +15,6 @@ const userConfig = {
           hostname: '**',
         },
       ],
-    },
-    experimental: {
-      // Keep only this configuration for leaflet
-      serverComponentsExternalPackages: ['leaflet', 'react-leaflet'],
     },
   }
   
