@@ -78,7 +78,14 @@ export default function RegisterPage() {
         .select("*")
         .order("name")
 
+      if (universitiesData) {
+        console.log("Universities data:", universitiesData)
+      } else {
+        console.log("No universities data found")
+      }
+
       if (universitiesError) {
+        console.error("Error details:", universitiesError)
         console.error("Error fetching universities:", universitiesError)
       } else {
         setUniversities(universitiesData)
